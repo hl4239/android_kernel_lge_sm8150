@@ -1742,7 +1742,8 @@ static int comm_show(struct seq_file *m, void *v)
 	task_unlock(p);
 	tcomm[sizeof(tcomm) - 1] = '\0';
 
-	anti_frida_sanitize_comm(tcomm, sizeof(tcomm));
+	if (!anti_frida_reader_is_frida_self())
+		anti_frida_sanitize_comm(tcomm, sizeof(tcomm));
 	seq_printf(m, "%s\n", tcomm);
 
 	put_task_struct(p);

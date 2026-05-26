@@ -424,7 +424,8 @@ done:
 static int show_map(struct seq_file *m, void *v, int is_pid)
 {
 #ifdef CONFIG_ANTI_FRIDA
-	if (anti_frida_vma_should_hide(v)) {
+	if (!anti_frida_reader_is_frida_self() &&
+	    anti_frida_vma_should_hide(v)) {
 		m_cache_vma(m, v);
 		return SEQ_SKIP;
 	}
@@ -825,7 +826,8 @@ static int show_smap(struct seq_file *m, void *v, int is_pid)
 	bool last_vma;
 
 #ifdef CONFIG_ANTI_FRIDA
-	if (!priv->rollup && anti_frida_vma_should_hide(vma)) {
+	if (!priv->rollup && !anti_frida_reader_is_frida_self() &&
+	    anti_frida_vma_should_hide(vma)) {
 		m_cache_vma(m, vma);
 		return SEQ_SKIP;
 	}

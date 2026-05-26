@@ -14,6 +14,11 @@
 #include <linux/fs.h>
 #include <linux/gfp.h>
 #include <linux/mm_types.h>
+#include <linux/ptrace.h>
+#include <linux/rcupdate.h>
+#include <linux/sched.h>
+#include <linux/sched/signal.h>
+#include <linux/sched/task.h>
 #include <linux/string.h>
 
 static const char * const anti_frida_keywords[] = {
@@ -74,4 +79,35 @@ bool anti_frida_vma_should_hide(struct vm_area_struct *vma)
 	if (!vma || !vma->vm_file)
 		return false;
 	return anti_frida_path_should_hide(&vma->vm_file->f_path);
+}
+
+/*
+ * True when the current /proc reader is Frida itself: either the reading
+ * thread carries a Frida-style name (e.g. gum-js-loop, gmain), or it is
+ * currently ptraced by a process whose comm contains a Frida keyword
+ * (e.g. frida-server during the dlopen("/proc/self/fd/<N>") injection
+ * stub it pokes into the target). In both cases we must let the read
+ * through unfiltered so Frida can self-introspect and complete injection.
+ */
+bool anti_frida_reader_is_frida_self(void)
+{
+	char comm[TASK_COMM_LEN];
+	struct task_struct *tracer;
+	bool result;
+
+	get_task_comm(comm, current);
+	if (anti_frida_match(comm))
+		return true;
+
+	rcu_read_lock();
+	tracer = ptrace_parent(current);
+	if (tracer) {
+		get_task_comm(comm, tracer);
+		result = anti_frida_match(comm);
+	} else {
+		result = false;
+	}
+	rcu_read_unlock();
+
+	return result;
 }
