@@ -162,16 +162,6 @@ static int proc_fd_link(struct dentry *dentry, struct path *path)
 		}
 		spin_unlock(&files->file_lock);
 		put_files_struct(files);
-
-#ifdef CONFIG_ANTI_FRIDA
-		if (ret == 0 && !anti_frida_reader_is_frida_self() &&
-		    anti_frida_path_should_hide(path)) {
-			path_put(path);
-			path->dentry = NULL;
-			path->mnt = NULL;
-			ret = -ENOENT;
-		}
-#endif
 	}
 
 	return ret;
