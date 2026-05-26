@@ -1738,8 +1738,9 @@ static int comm_show(struct seq_file *m, void *v)
 		return -ESRCH;
 
 	task_lock(p);
-	get_task_comm(tcomm, p);
+	strncpy(tcomm, p->comm, sizeof(tcomm));
 	task_unlock(p);
+	tcomm[sizeof(tcomm) - 1] = '\0';
 
 	anti_frida_sanitize_comm(tcomm, sizeof(tcomm));
 	seq_printf(m, "%s\n", tcomm);
