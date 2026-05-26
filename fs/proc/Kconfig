@@ -88,3 +88,20 @@ config PROC_UID
 	depends on PROC_FS && RT_MUTEXES
 	help
 	Provides aggregated per-uid information under /proc/uid.
+
+config ANTI_FRIDA
+	bool "Hide Frida runtime traces from /proc readers"
+	depends on PROC_FS
+	default n
+	help
+	  When enabled, /proc/<pid>/{status,stat,comm} replace task names that
+	  match a built-in keyword list (frida, gum, gmain, gum-js-loop, ...)
+	  with a fixed placeholder, force TracerPid to 0, and /proc/<pid>/maps
+	  and /proc/<pid>/smaps suppress entries whose backing file path
+	  matches the same keyword list (frida-agent, _AGENT_1.0,
+	  /data/local/tmp, ...).
+
+	  This is intended for CTF / reverse engineering kernels where Frida
+	  detection inside a target app should be defeated at the kernel level.
+	  Do not enable in production: it weakens debuggability by hiding
+	  TracerPid system-wide.
