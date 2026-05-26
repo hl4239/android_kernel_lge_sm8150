@@ -48,27 +48,30 @@ void anti_frida_sanitize_comm(char *tcomm, size_t len)
 		strscpy(tcomm, ANTI_FRIDA_REPLACE_COMM, len);
 }
 
-bool anti_frida_vma_should_hide(struct vm_area_struct *vma)
+bool anti_frida_path_should_hide(const struct path *p)
 {
-	struct file *file;
 	char *buf;
-	char *path;
+	char *resolved;
 	bool hide = false;
 
-	if (!vma)
-		return false;
-	file = vma->vm_file;
-	if (!file)
+	if (!p || !p->dentry)
 		return false;
 
 	buf = (char *)__get_free_page(GFP_KERNEL);
 	if (!buf)
 		return false;
 
-	path = d_path(&file->f_path, buf, PAGE_SIZE);
-	if (!IS_ERR(path))
-		hide = anti_frida_match(path);
+	resolved = d_path(p, buf, PAGE_SIZE);
+	if (!IS_ERR(resolved))
+		hide = anti_frida_match(resolved);
 
 	free_page((unsigned long)buf);
 	return hide;
+}
+
+bool anti_frida_vma_should_hide(struct vm_area_struct *vma)
+{
+	if (!vma || !vma->vm_file)
+		return false;
+	return anti_frida_path_should_hide(&vma->vm_file->f_path);
 }

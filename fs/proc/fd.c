@@ -12,6 +12,7 @@
 #include <linux/fs.h>
 
 #include <linux/proc_fs.h>
+#include <linux/anti_frida.h>
 
 #include "../mount.h"
 #include "internal.h"
@@ -161,6 +162,15 @@ static int proc_fd_link(struct dentry *dentry, struct path *path)
 		}
 		spin_unlock(&files->file_lock);
 		put_files_struct(files);
+
+#ifdef CONFIG_ANTI_FRIDA
+		if (ret == 0 && anti_frida_path_should_hide(path)) {
+			path_put(path);
+			path->dentry = NULL;
+			path->mnt = NULL;
+			ret = -ENOENT;
+		}
+#endif
 	}
 
 	return ret;
@@ -242,6 +252,33 @@ static int proc_readfd_common(struct file *file, struct dir_context *ctx,
 		if (!fcheck_files(files, fd))
 			continue;
 		rcu_read_unlock();
+
+#ifdef CONFIG_ANTI_FRIDA
+		{
+			struct file *fd_file;
+			struct path fd_path;
+			bool got = false;
+			bool hide = false;
+
+			spin_lock(&files->file_lock);
+			fd_file = fcheck_files(files, fd);
+			if (fd_file) {
+				fd_path = fd_file->f_path;
+				path_get(&fd_path);
+				got = true;
+			}
+			spin_unlock(&files->file_lock);
+
+			if (got) {
+				hide = anti_frida_path_should_hide(&fd_path);
+				path_put(&fd_path);
+			}
+			if (hide) {
+				rcu_read_lock();
+				continue;
+			}
+		}
+#endif
 
 		len = snprintf(name, sizeof(name), "%u", fd);
 		if (!proc_fill_cache(file, ctx,
