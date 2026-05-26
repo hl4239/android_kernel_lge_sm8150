@@ -95,6 +95,7 @@
 #include <linux/flex_array.h>
 #include <linux/posix-timers.h>
 #include <linux/cpufreq_times.h>
+#include <linux/anti_frida.h>
 #ifdef CONFIG_HARDWALL
 #include <asm/hardwall.h>
 #endif
@@ -1730,14 +1731,18 @@ static int comm_show(struct seq_file *m, void *v)
 {
 	struct inode *inode = m->private;
 	struct task_struct *p;
+	char tcomm[TASK_COMM_LEN];
 
 	p = get_proc_task(inode);
 	if (!p)
 		return -ESRCH;
 
 	task_lock(p);
-	seq_printf(m, "%s\n", p->comm);
+	get_task_comm(tcomm, p);
 	task_unlock(p);
+
+	anti_frida_sanitize_comm(tcomm, sizeof(tcomm));
+	seq_printf(m, "%s\n", tcomm);
 
 	put_task_struct(p);
 

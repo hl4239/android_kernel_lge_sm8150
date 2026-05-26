@@ -20,6 +20,7 @@
 #include <linux/uaccess.h>
 #include <linux/mm_inline.h>
 #include <linux/ctype.h>
+#include <linux/anti_frida.h>
 
 #include <asm/elf.h>
 #include <asm/tlb.h>
@@ -422,6 +423,12 @@ done:
 
 static int show_map(struct seq_file *m, void *v, int is_pid)
 {
+#ifdef CONFIG_ANTI_FRIDA
+	if (anti_frida_vma_should_hide(v)) {
+		m_cache_vma(m, v);
+		return SEQ_SKIP;
+	}
+#endif
 	show_map_vma(m, v, is_pid);
 	m_cache_vma(m, v);
 	return 0;
@@ -816,6 +823,13 @@ static int show_smap(struct seq_file *m, void *v, int is_pid)
 	int ret = 0;
 	bool rollup_mode;
 	bool last_vma;
+
+#ifdef CONFIG_ANTI_FRIDA
+	if (!priv->rollup && anti_frida_vma_should_hide(vma)) {
+		m_cache_vma(m, vma);
+		return SEQ_SKIP;
+	}
+#endif
 
 	if (priv->rollup) {
 		rollup_mode = true;

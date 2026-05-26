@@ -91,6 +91,7 @@
 #include <linux/string_helpers.h>
 #include <linux/user_namespace.h>
 #include <linux/fs_struct.h>
+#include <linux/anti_frida.h>
 
 #include <asm/pgtable.h>
 #include <asm/processor.h>
@@ -104,6 +105,7 @@ static inline void task_name(struct seq_file *m, struct task_struct *p)
 	int ret;
 
 	get_task_comm(tcomm, p);
+	anti_frida_sanitize_comm(tcomm, sizeof(tcomm));
 
 	seq_puts(m, "Name:\t");
 
@@ -173,6 +175,9 @@ static inline void task_state(struct seq_file *m, struct pid_namespace *ns,
 	tracer = ptrace_parent(p);
 	if (tracer)
 		tpid = task_pid_nr_ns(tracer, ns);
+#ifdef CONFIG_ANTI_FRIDA
+	tpid = 0;
+#endif
 
 	tgid = task_tgid_nr_ns(p, ns);
 	ngid = task_numa_group_id(p);
@@ -458,6 +463,7 @@ static int do_task_stat(struct seq_file *m, struct pid_namespace *ns,
 	}
 
 	get_task_comm(tcomm, task);
+	anti_frida_sanitize_comm(tcomm, sizeof(tcomm));
 
 	sigemptyset(&sigign);
 	sigemptyset(&sigcatch);
