@@ -105,7 +105,7 @@ static inline void task_name(struct seq_file *m, struct task_struct *p)
 	int ret;
 
 	get_task_comm(tcomm, p);
-	if (!anti_frida_reader_is_frida_self())
+	if (anti_frida_should_filter())
 		anti_frida_sanitize_comm(tcomm, sizeof(tcomm));
 
 	seq_puts(m, "Name:\t");
@@ -177,7 +177,7 @@ static inline void task_state(struct seq_file *m, struct pid_namespace *ns,
 	if (tracer)
 		tpid = task_pid_nr_ns(tracer, ns);
 #ifdef CONFIG_ANTI_FRIDA
-	if (!anti_frida_reader_is_frida_self())
+	if (anti_frida_should_filter())
 		tpid = 0;
 #endif
 
@@ -465,7 +465,7 @@ static int do_task_stat(struct seq_file *m, struct pid_namespace *ns,
 	}
 
 	get_task_comm(tcomm, task);
-	if (!anti_frida_reader_is_frida_self())
+	if (anti_frida_should_filter())
 		anti_frida_sanitize_comm(tcomm, sizeof(tcomm));
 
 	sigemptyset(&sigign);

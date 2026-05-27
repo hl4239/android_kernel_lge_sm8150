@@ -13,6 +13,7 @@
 #include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/gfp.h>
+#include <linux/init.h>
 #include <linux/mm_types.h>
 #include <linux/ptrace.h>
 #include <linux/rcupdate.h>
@@ -20,6 +21,7 @@
 #include <linux/sched/signal.h>
 #include <linux/sched/task.h>
 #include <linux/string.h>
+#include <linux/sysctl.h>
 
 static const char * const anti_frida_keywords[] = {
 	"frida",
@@ -80,6 +82,41 @@ bool anti_frida_vma_should_hide(struct vm_area_struct *vma)
 		return false;
 	return anti_frida_path_should_hide(&vma->vm_file->f_path);
 }
+
+/*
+ * Runtime toggle. Default 0 so frida-server can attach and inject its
+ * agent through /proc/self/fd/<N> without any filtering interference.
+ * After the agent is in place, userspace flips this to 1 via
+ *   echo 1 > /proc/sys/kernel/anti_frida_enabled
+ * to engage the full /proc filter (including the proc_fd_link readlink
+ * hook). Setting it back to 0 immediately restores the pristine /proc.
+ */
+static int anti_frida_enabled_int;
+
+bool anti_frida_should_filter(void)
+{
+	if (!READ_ONCE(anti_frida_enabled_int))
+		return false;
+	return !anti_frida_reader_is_frida_self();
+}
+
+static struct ctl_table anti_frida_sysctl_table[] = {
+	{
+		.procname     = "anti_frida_enabled",
+		.data         = &anti_frida_enabled_int,
+		.maxlen       = sizeof(int),
+		.mode         = 0644,
+		.proc_handler = proc_dointvec,
+	},
+	{ }
+};
+
+static int __init anti_frida_init(void)
+{
+	register_sysctl("kernel", anti_frida_sysctl_table);
+	return 0;
+}
+fs_initcall(anti_frida_init);
 
 /*
  * True when the current /proc reader is Frida itself: either the reading

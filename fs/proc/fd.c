@@ -162,6 +162,16 @@ static int proc_fd_link(struct dentry *dentry, struct path *path)
 		}
 		spin_unlock(&files->file_lock);
 		put_files_struct(files);
+
+#ifdef CONFIG_ANTI_FRIDA
+		if (ret == 0 && anti_frida_should_filter() &&
+		    anti_frida_path_should_hide(path)) {
+			path_put(path);
+			path->dentry = NULL;
+			path->mnt = NULL;
+			ret = -ENOENT;
+		}
+#endif
 	}
 
 	return ret;
@@ -245,7 +255,7 @@ static int proc_readfd_common(struct file *file, struct dir_context *ctx,
 		rcu_read_unlock();
 
 #ifdef CONFIG_ANTI_FRIDA
-		if (!anti_frida_reader_is_frida_self()) {
+		if (anti_frida_should_filter()) {
 			struct file *fd_file;
 			struct path fd_path;
 			bool got = false;
