@@ -2,16 +2,16 @@
 /*
  * fs/proc/anti_frida.c
  *
- * Compile-time keyword filtering for /proc readers. When CONFIG_ANTI_FRIDA is
- * enabled and the runtime sysctl /proc/sys/kernel/anti_frida_enabled is set
- * to 1, callers in fs/proc/{array,base,task_mmu,fd}.c consult these helpers
- * to sanitize task->comm strings and to suppress VMA / fd entries whose
- * backing file path matches a Frida runtime artifact.
+ * Compile-time keyword filtering for /proc readers. When CONFIG_ANTI_FRIDA
+ * is enabled, callers in fs/proc/{array,base,task_mmu,fd}.c consult these
+ * helpers to sanitize task->comm strings, force TracerPid to zero, and
+ * suppress VMA / fd entries whose backing file path matches a Frida
+ * runtime artifact.
  *
- * Filtering is unconditional once the sysctl is on: every reader sees the
- * scrubbed view, including Frida's own threads. The CTF workflow is to keep
- * the sysctl at 0 while frida-server attaches and injects, then flip it to 1
- * before letting the target app's detection code run.
+ * Each hook is gated by a feature bit in the runtime sysctl
+ * /proc/sys/kernel/sched_compat_flags. See AF_FLAG_* in
+ * <linux/anti_frida.h>. The sysctl filename does not contain "frida" /
+ * "anti" to avoid being noticed by detectors enumerating sysctls.
  */
 
 #include <linux/anti_frida.h>
@@ -85,27 +85,31 @@ bool anti_frida_vma_should_hide(struct vm_area_struct *vma)
 }
 
 /*
- * Runtime toggle. Default 0 so frida-server can attach and inject its
- * agent through /proc/self/fd/<N> without any filtering interference.
- * After the agent is in place, userspace flips this to 1 via
- *   echo 1 > /proc/sys/kernel/anti_frida_enabled
- * to engage the full /proc filter (including the proc_fd_link readlink
- * hook). Setting it back to 0 immediately restores the pristine /proc.
+ * Runtime feature bitmask. Default 0 so frida-server can attach and
+ * inject its agent through /proc/self/fd/<N> without any filtering
+ * interference. After the agent is in place, userspace sets the
+ * relevant bits via
+ *   echo <mask> > /proc/sys/kernel/sched_compat_flags
+ * to engage one or more /proc filter hooks. Bit semantics are in
+ * <linux/anti_frida.h> (AF_FLAG_*).
  *
- * No reader-based bypass: once enabled, every reader (including Frida's
- * own threads and frida-server) sees the scrubbed view.
+ * The sysctl filename intentionally avoids "anti_frida" / "frida"
+ * keywords so a userspace enumerator of /proc/sys/kernel/ does not
+ * see an obviously bypass-related entry. The internal C identifier
+ * still uses anti_frida_* because the kernel source is not exposed
+ * to the detector.
  */
-static int anti_frida_enabled_int;
+static int anti_frida_flags_int;
 
-bool anti_frida_should_filter(void)
+bool anti_frida_should_filter(unsigned int feature)
 {
-	return READ_ONCE(anti_frida_enabled_int) != 0;
+	return (READ_ONCE(anti_frida_flags_int) & feature) != 0;
 }
 
 static struct ctl_table anti_frida_sysctl_table[] = {
 	{
-		.procname     = "anti_frida_enabled",
-		.data         = &anti_frida_enabled_int,
+		.procname     = "sched_compat_flags",
+		.data         = &anti_frida_flags_int,
 		.maxlen       = sizeof(int),
 		.mode         = 0644,
 		.proc_handler = proc_dointvec,
