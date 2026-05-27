@@ -3,9 +3,15 @@
  * fs/proc/anti_frida.c
  *
  * Compile-time keyword filtering for /proc readers. When CONFIG_ANTI_FRIDA is
- * enabled, callers in fs/proc/{array,base,task_mmu}.c consult these helpers to
- * sanitize task->comm strings and to suppress VMA entries whose backing file
- * path matches a Frida runtime artifact.
+ * enabled and the runtime sysctl /proc/sys/kernel/anti_frida_enabled is set
+ * to 1, callers in fs/proc/{array,base,task_mmu,fd}.c consult these helpers
+ * to sanitize task->comm strings and to suppress VMA / fd entries whose
+ * backing file path matches a Frida runtime artifact.
+ *
+ * Filtering is unconditional once the sysctl is on: every reader sees the
+ * scrubbed view, including Frida's own threads. The CTF workflow is to keep
+ * the sysctl at 0 while frida-server attaches and injects, then flip it to 1
+ * before letting the target app's detection code run.
  */
 
 #include <linux/anti_frida.h>
@@ -15,11 +21,6 @@
 #include <linux/gfp.h>
 #include <linux/init.h>
 #include <linux/mm_types.h>
-#include <linux/ptrace.h>
-#include <linux/rcupdate.h>
-#include <linux/sched.h>
-#include <linux/sched/signal.h>
-#include <linux/sched/task.h>
 #include <linux/string.h>
 #include <linux/sysctl.h>
 
@@ -90,14 +91,15 @@ bool anti_frida_vma_should_hide(struct vm_area_struct *vma)
  *   echo 1 > /proc/sys/kernel/anti_frida_enabled
  * to engage the full /proc filter (including the proc_fd_link readlink
  * hook). Setting it back to 0 immediately restores the pristine /proc.
+ *
+ * No reader-based bypass: once enabled, every reader (including Frida's
+ * own threads and frida-server) sees the scrubbed view.
  */
 static int anti_frida_enabled_int;
 
 bool anti_frida_should_filter(void)
 {
-	if (!READ_ONCE(anti_frida_enabled_int))
-		return false;
-	return !anti_frida_reader_is_frida_self();
+	return READ_ONCE(anti_frida_enabled_int) != 0;
 }
 
 static struct ctl_table anti_frida_sysctl_table[] = {
@@ -117,34 +119,3 @@ static int __init anti_frida_init(void)
 	return 0;
 }
 fs_initcall(anti_frida_init);
-
-/*
- * True when the current /proc reader is Frida itself: either the reading
- * thread carries a Frida-style name (e.g. gum-js-loop, gmain), or it is
- * currently ptraced by a process whose comm contains a Frida keyword
- * (e.g. frida-server during the dlopen("/proc/self/fd/<N>") injection
- * stub it pokes into the target). In both cases we must let the read
- * through unfiltered so Frida can self-introspect and complete injection.
- */
-bool anti_frida_reader_is_frida_self(void)
-{
-	char comm[TASK_COMM_LEN];
-	struct task_struct *tracer;
-	bool result;
-
-	get_task_comm(comm, current);
-	if (anti_frida_match(comm))
-		return true;
-
-	rcu_read_lock();
-	tracer = ptrace_parent(current);
-	if (tracer) {
-		get_task_comm(comm, tracer);
-		result = anti_frida_match(comm);
-	} else {
-		result = false;
-	}
-	rcu_read_unlock();
-
-	return result;
-}
