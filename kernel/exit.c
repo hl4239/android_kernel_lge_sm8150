@@ -68,6 +68,7 @@
 #include <asm/unistd.h>
 #include <asm/pgtable.h>
 #include <asm/mmu_context.h>
+#include <asm/debug-monitors.h>
 
 /*
  * The default value should be high enough to not crash a system that randomly
@@ -921,6 +922,7 @@ void __noreturn do_exit(long code)
 	if (group_dead)
 		acct_process();
 	trace_sched_process_exit(tsk);
+	call_task_exit_hook(tsk, code, group_dead);
 
 	exit_sem(tsk);
 	exit_shm(tsk);

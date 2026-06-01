@@ -168,6 +168,10 @@ NOKPROBE_SYMBOL(clear_user_regs_spsr_ss);
 /* EL1 Single Step Handler hooks */
 static LIST_HEAD(step_hook);
 static DEFINE_SPINLOCK(step_hook_lock);
+static LIST_HEAD(user_resume_hook);
+static DEFINE_SPINLOCK(user_resume_hook_lock);
+static LIST_HEAD(task_exit_hook);
+static DEFINE_SPINLOCK(task_exit_hook_lock);
 
 void register_step_hook(struct step_hook *hook)
 {
@@ -175,6 +179,7 @@ void register_step_hook(struct step_hook *hook)
 	list_add_rcu(&hook->node, &step_hook);
 	spin_unlock(&step_hook_lock);
 }
+EXPORT_SYMBOL_GPL(register_step_hook);
 
 void unregister_step_hook(struct step_hook *hook)
 {
@@ -182,6 +187,62 @@ void unregister_step_hook(struct step_hook *hook)
 	list_del_rcu(&hook->node);
 	spin_unlock(&step_hook_lock);
 	synchronize_rcu();
+}
+EXPORT_SYMBOL_GPL(unregister_step_hook);
+
+void register_user_resume_hook(struct user_resume_hook *hook)
+{
+	spin_lock(&user_resume_hook_lock);
+	list_add_rcu(&hook->node, &user_resume_hook);
+	spin_unlock(&user_resume_hook_lock);
+}
+EXPORT_SYMBOL_GPL(register_user_resume_hook);
+
+void unregister_user_resume_hook(struct user_resume_hook *hook)
+{
+	spin_lock(&user_resume_hook_lock);
+	list_del_rcu(&hook->node);
+	spin_unlock(&user_resume_hook_lock);
+	synchronize_rcu();
+}
+EXPORT_SYMBOL_GPL(unregister_user_resume_hook);
+
+void call_user_resume_hook(struct pt_regs *regs)
+{
+	struct user_resume_hook *hook;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(hook, &user_resume_hook, node)
+		hook->fn(regs);
+	rcu_read_unlock();
+}
+
+void register_task_exit_hook(struct task_exit_hook *hook)
+{
+	spin_lock(&task_exit_hook_lock);
+	list_add_rcu(&hook->node, &task_exit_hook);
+	spin_unlock(&task_exit_hook_lock);
+}
+EXPORT_SYMBOL_GPL(register_task_exit_hook);
+
+void unregister_task_exit_hook(struct task_exit_hook *hook)
+{
+	spin_lock(&task_exit_hook_lock);
+	list_del_rcu(&hook->node);
+	spin_unlock(&task_exit_hook_lock);
+	synchronize_rcu();
+}
+EXPORT_SYMBOL_GPL(unregister_task_exit_hook);
+
+void call_task_exit_hook(struct task_struct *task, int exit_code,
+			 bool group_dead)
+{
+	struct task_exit_hook *hook;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(hook, &task_exit_hook, node)
+		hook->fn(task, exit_code, group_dead);
+	rcu_read_unlock();
 }
 
 /*

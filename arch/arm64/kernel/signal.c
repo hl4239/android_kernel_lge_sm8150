@@ -770,6 +770,7 @@ asmlinkage void do_notify_resume(struct pt_regs *regs,
 			if (thread_flags & _TIF_NOTIFY_RESUME) {
 				clear_thread_flag(TIF_NOTIFY_RESUME);
 				tracehook_notify_resume(regs);
+				call_user_resume_hook(regs);
 			}
 
 			if (thread_flags & _TIF_FOREIGN_FPSTATE)

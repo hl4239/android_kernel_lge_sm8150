@@ -98,6 +98,25 @@ struct step_hook {
 void register_step_hook(struct step_hook *hook);
 void unregister_step_hook(struct step_hook *hook);
 
+struct user_resume_hook {
+	struct list_head node;
+	void (*fn)(struct pt_regs *regs);
+};
+
+void register_user_resume_hook(struct user_resume_hook *hook);
+void unregister_user_resume_hook(struct user_resume_hook *hook);
+void call_user_resume_hook(struct pt_regs *regs);
+
+struct task_exit_hook {
+	struct list_head node;
+	void (*fn)(struct task_struct *task, int exit_code, bool group_dead);
+};
+
+void register_task_exit_hook(struct task_exit_hook *hook);
+void unregister_task_exit_hook(struct task_exit_hook *hook);
+void call_task_exit_hook(struct task_struct *task, int exit_code,
+			 bool group_dead);
+
 struct break_hook {
 	struct list_head node;
 	u32 esr_val;
